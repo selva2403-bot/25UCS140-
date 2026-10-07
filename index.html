@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BusHelp - Bus Not Coming Simulator</title>
+<style>
+  :root{
+    --ink:#10243e; --muted:#5b6b82; --bg:#eef3fb; --card:#fff; --blue:#1565c0;
+    --green:#2e7d32; --amber:#b26a00; --red:#c62828; --line:#d5deec;
+  }
+  *{box-sizing:border-box}
+  body{font-family:Arial,sans-serif;background:var(--bg);margin:0;color:var(--ink)}
+  header{background:var(--blue);color:#fff;padding:18px 20px;text-align:center}
+  header h1{margin:0 0 4px;font-size:24px}
+  header p{margin:0;opacity:.9;font-size:14px}
+  main{max-width:480px;margin:16px auto;padding:0 12px 40px}
+  .card{background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(16,36,62,.12)}
+  h2{margin:0 0 12px;font-size:17px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input,select{width:100%;padding:12px;border:1px solid #c4cfe0;border-radius:8px;font-size:16px;background:#fff;color:var(--ink)}
+  input:focus,select:focus,button:focus-visible{outline:3px solid #90b8ee;outline-offset:1px}
+  .btns{display:grid;gap:8px;margin-top:14px}
+  button{padding:13px;border:none;border-radius:8px;font-size:16px;cursor:pointer;color:#fff}
+  button:active{transform:scale(.98)}
+  .check{background:var(--blue)} .report{background:var(--red)} .alternative{background:var(--green)}
+  .reset{background:#e4eaf5;color:var(--ink)}
+  #result{margin-top:14px;font-size:16px;font-weight:bold;min-height:22px}
+
+  /* status */
+  .status{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .pill{padding:6px 12px;border-radius:999px;font-size:14px;font-weight:bold;color:#fff;background:#8a97ab}
+  .pill.ok{background:var(--green)} .pill.late{background:var(--amber)} .pill.bad{background:var(--red)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;text-align:center}
+  .stat{background:#f4f7fc;border-radius:10px;padding:10px 4px}
+  .stat b{display:block;font-size:20px}
+  .stat span{font-size:12px;color:var(--muted)}
+
+  /* route */
+  .route{position:relative;height:96px;margin:18px 10px 0}
+  .rail{position:absolute;left:0;right:0;top:34px;height:6px;border-radius:3px;background:var(--line)}
+  .rail-fill{position:absolute;left:0;top:34px;height:6px;border-radius:3px;background:var(--blue);width:0;transition:width .6s linear}
+  .stop{position:absolute;top:30px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:#fff;border:3px solid #9fb0c9}
+  .stop.you{border-color:var(--red);background:var(--red);width:18px;height:18px;margin-left:-9px;top:28px}
+  .stop-name{position:absolute;top:52px;width:64px;margin-left:-32px;font-size:10.5px;text-align:center;color:var(--muted);line-height:1.2}
+  .stop-name.you{color:var(--red);font-weight:bold}
+  .bus{position:absolute;top:0;margin-left:-14px;font-size:26px;transition:left .6s linear;filter:drop-shadow(0 2px 2px rgba(0,0,0,.25))}
+  .bus.stalled{animation:shake .4s infinite}
+  @keyframes shake{50%{transform:translateY(-2px) rotate(-4deg)}}
+  @media (prefers-reduced-motion:reduce){.bus.stalled{animation:none}.bus,.rail-fill{transition:none}}
+
+  /* log */
+  #log{list-style:none;margin:0;padding:0;max-height:210px;overflow:auto;font-size:14px}
+  #log li{padding:8px 0;border-bottom:1px solid #edf1f8;display:flex;gap:10px}
+  #log time{color:var(--muted);min-width:52px;font-variant-numeric:tabular-nums}
+  #log li.warn{color:var(--amber)} #log li.err{color:var(--red)} #log li.good{color:var(--green)}
+  #log li.empty{color:var(--muted)}
+
+  /* alternatives */
+  .alt{display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+  .alt.best{border-color:var(--green);background:#f0f8f1}
+  .alt strong{display:block;font-size:15px} .alt small{color:var(--muted)}
+  .alt .meta{text-align:right;font-size:14px;font-weight:bold}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚌 BusHelp</h1>
+  <p>Bus not coming? Run a live simulation</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Bus details</h2>
+    <label for="busNumber">Bus number</label>
+    <input type="text" id="busNumber" placeholder="e.g. 42A" autocomplete="off">
+    <label for="busStop">Your bus stop</label>
+    <input type="text" id="busStop" placeholder="e.g. Central Library" autocomplete="off">
+    <label for="scenario">Simulation scenario</label>
+    <select id="scenario">
+      <option value="normal">Bus runs on time</option>
+      <option value="delayed">Heavy traffic delay</option>
+      <option value="breakdown" selected>Bus breaks down</option>
+    </select>
+
+    <div class="btns">
+      <button class="check" onclick="checkBus()">🔍 Check bus</button>
+      <button class="report" onclick="reportBus()">📢 Report: bus not coming</button>
+      <button class="alternative" onclick="alternativeBus()">🚕 Find alternative</button>
+      <button class="reset" onclick="resetSim()">↺ Reset</button>
+    </div>
+    <div id="result" aria-live="polite">Waiting for bus information...</div>
+  </section>
+
+  <section class="card" id="live" hidden>
+    <div class="status">
+      <h2 id="liveTitle" style="margin:0">Bus</h2>
+      <span class="pill" id="pill">Checking</span>
+    </div>
+    <div class="route" id="route" aria-label="Bus route map">
+      <div class="rail"></div><div class="rail-fill" id="fill"></div>
+      <div class="bus" id="bus">🚌</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="eta">--</b><span>ETA (min)</span></div>
+      <div class="stat"><b id="away">--</b><span>Stops away</span></div>
+      <div class="stat"><b id="reports">0</b><span>Reports</span></div>
+    </div>
+  </section>
+
+  <section class="card" id="altCard" hidden>
+    <h2>Alternatives</h2>
+    <div id="altList"></div>
+  </section>
+
+  <section class="card">
+    <h2>Activity log</h2>
+    <ul id="log"><li class="empty">Nothing yet. Tap “Check bus” to start.</li></ul>
+  </section>
+</main>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const TARGET = 4;                 // index of the user's stop on the route
+  const NOMINAL = 0.28;             // stops per simulated minute
+  const TICK_MS = 800;              // 1 simulated minute = 0.8 s
+
+  let sim = null;
+
+  function stopsFor(userStop){
+    return ["Depot","Market Road","City Hospital","Old Bridge",userStop,"Railway Station"];
+  }
+
+  function buildRoute(stops){
+    const route = $("route");
+    route.querySelectorAll(".stop,.stop-name").forEach(n => n.remove());
+    stops.forEach((name,i)=>{
+      const left = (i/(stops.length-1))*100 + "%";
+      const dot = document.createElement("div");
+      dot.className = "stop" + (i===TARGET ? " you" : "");
+      dot.style.left = left;
+      const label = document.createElement("div");
+      label.className = "stop-name" + (i===TARGET ? " you" : "");
+      label.style.left = left;
+      label.textContent = i===TARGET ? name + " (you)" : name;
+      route.append(dot,label);
+    });
+  }
+
+  function clock(minutes){
+    const d = new Date(sim.start + minutes*60000);
+    return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  }
+
+  function log(text, kind=""){
+    const ul = $("log");
+    if (ul.querySelector(".empty")) ul.innerHTML = "";
+    const li = document.createElement("li");
+    if (kind) li.className = kind;
+    li.innerHTML = "<time>" + (sim ? clock(sim.minute) : "--:--") + "</time><span></span>";
+    li.lastChild.textContent = text;
+    ul.prepend(li);
+  }
+
+  function setResult(t){ $("result").innerHTML = t; }
+
+  function checkBus(){
+    const bus = $("busNumber").value.trim();
+    const stop = $("busStop").value.trim();
+    if (!bus || !stop){
+      setResult("⚠️ Please enter bus number and bus stop.");
+      return;
+    }
+    stopSim();
+    $("log").innerHTML = "";
+    $("altCard").hidden = true;
+    sim = {
+      bus, stop, scenario: $("scenario").value,
+      stops: stopsFor(stop), pos: 0, minute: 0, stalled: 0,
+      reports: 0, speed: NOMINAL, arrived: false, flags: {},
+      start: Date.now(), timer: null
+    };
+    buildRoute(sim.stops);
+    $("live").hidden = false;
+    $("liveTitle").textContent = "Bus " + bus + " → " + stop;
+    setResult("🚌 Bus " + bus + " is being checked at " + stop + "...");
+    log("Tracking started for bus " + bus + ". Departed " + sim.stops[0] + ".");
+    render();
+    sim.timer = setInterval(tick, TICK_MS);
+  }
+
+  function tick(){
+    sim.minute++;
+    const s = sim.scenario, p = sim.pos;
+
+    if (s === "normal"){
+      sim.speed = NOMINAL + (Math.random()-.5)*0.06;
+    } else if (s === "delayed"){
+      sim.speed = (p > 1.2 && p < 3) ? 0.08 + Math.random()*0.04 : NOMINAL;
+    } else { // breakdown
+      sim.speed = p >= 2.2 ? 0 : NOMINAL;
+    }
+
+    sim.pos = Math.min(TARGET, sim.pos + sim.speed);
+    sim.stalled = sim.speed === 0 ? sim.stalled + 1 : 0;
+
+    events();
+    render();
+
+    if (sim.pos >= TARGET && !sim.arrived){
+      sim.arrived = true;
+      log("Bus " + sim.bus + " has arrived at " + sim.stop + ".", "good");
+      setResult("✅ Bus " + sim.bus + " has arrived at " + sim.stop + ".");
+      stopSim();
+    }
+  }
+
+  function once(key, fn){ if (!sim.flags[key]){ sim.flags[key]=true; fn(); } }
+
+  function events(){
+    const p = sim.pos, f = sim.flags;
+    const near = Math.floor(p);
+    once("passed"+near, ()=>{ if (near>0 && near<TARGET) log("Passed " + sim.stops[near] + "."); });
+
+    if (sim.scenario === "delayed" && p > 1.2){
+      once("traffic", ()=>log("Heavy traffic near " + sim.stops[2] + ". Bus is moving slowly.", "warn"));
+      if (p >= 3) once("clear", ()=>log("Traffic cleared. Bus is speeding up.", "good"));
+    }
+    if (sim.scenario === "breakdown" && sim.speed === 0){
+      once("stop", ()=>log("Bus has stopped between " + sim.stops[2] + " and " + sim.stops[3] + ".", "warn"));
+      if (sim.stalled === 3) once("lost", ()=>log("No movement for 3 minutes. Bus is likely not coming.", "err"));
+      if (sim.stalled === 2 || sim.stalled === 4 || sim.stalled === 6){
+        sim.reports++;
+        log("A nearby commuter reported: bus not moving.", "warn");
+      }
+      if (sim.stalled === 5) once("alt", ()=>{
+        log("Tip: tap “Find alternative” for other ways to travel.", "warn");
+        showAlternatives();
+      });
+    }
+  }
+
+  function render(){
+    const pct = (sim.pos/(sim.stops.length-1))*100;
+    $("bus").style.left = pct + "%";
+    $("fill").style.width = pct + "%";
+    $("bus").classList.toggle("stalled", sim.speed === 0 && !sim.arrived);
+
+    const away = Math.max(0, Math.ceil(TARGET - sim.pos - 0.0001));
+    $("away").textContent = sim.arrived ? 0 : away;
+    $("reports").textContent = sim.reports;
+
+    let eta, label, cls;
+    if (sim.arrived){ eta = 0; label = "Arrived"; cls = "ok"; }
+    else if (sim.stalled >= 3){ eta = "--"; label = "Not coming"; cls = "bad"; }
+    else if (sim.speed === 0){ eta = "--"; label = "Stopped"; cls = "late"; }
+    else {
+      const spd = Math.max(sim.speed, 0.08);
+      eta = Math.ceil((TARGET - sim.pos)/spd);
+      if (sim.speed < 0.15){ label = "Delayed"; cls = "late"; }
+      else { label = "On time"; cls = "ok"; }
+    }
+    $("eta").textContent = eta;
+    const pill = $("pill");
+    pill.textContent = label;
+    pill.className = "pill " + cls;
+
+    if (!sim.arrived){
+      if (label === "Not coming") setResult("🚫 Bus " + sim.bus + " is not coming. Report it or find an alternative.");
+      else if (label === "Delayed") setResult("⏳ Bus " + sim.bus + " is delayed. ETA about " + eta + " min.");
+      else if (label === "Stopped") setResult("⚠️ Bus " + sim.bus + " has stopped moving...");
+      else setResult("🚌 Bus " + sim.bus + " arrives at " + sim.stop + " in about " + eta + " min.");
+    }
+  }
+
+  function reportBus(){
+    if (!sim){
+      setResult("⚠️ Check a bus first, then report it.");
+      return;
+    }
+    sim.reports++;
+    $("reports").textContent = sim.reports;
+    log("You reported: bus not coming.", "err");
+    const total = sim.reports;
+    setResult("📢 Bus delay reported successfully! " + total + " report" + (total>1?"s":"") + " so far.");
+    if (total >= 3) once("confirmed", ()=>log("Report confirmed by multiple commuters. Operator notified.", "good"));
+  }
+
+  function alternativeBus(){
+    if (!sim){
+      setResult("⚠️ Check a bus first to see alternatives.");
+      return;
+    }
+    showAlternatives();
+    setResult("🚕 Try another bus, auto, taxi or nearby route.");
+    log("Alternatives requested.");
+  }
+
+  function showAlternatives(){
+    if (!sim) return;
+    const delayMin = sim.scenario === "normal" ? 5 : 15;
+    const items = [
+      {icon:"🚌", name:"Next bus " + sim.bus, note:"Same route, next scheduled trip", time:delayMin+10, cost:"₹15", best:sim.scenario==="normal"},
+      {icon:"🛺", name:"Auto-rickshaw", note:"Pick up at " + sim.stop, time:6, cost:"₹60–80", best:sim.scenario!=="normal"},
+      {icon:"🚕", name:"Taxi / cab", note:"Book via app", time:8, cost:"₹150–200"},
+      {icon:"🚶", name:"Walk to " + sim.stops[TARGET+1], note:"Nearby stop with more buses", time:12, cost:"Free"}
+    ];
+    $("altList").innerHTML = items.map(i =>
+      '<div class="alt' + (i.best?' best':'') + '"><div><strong>' + i.icon + ' ' + i.name +
+      '</strong><small>' + i.note + (i.best?' · Recommended':'') + '</small></div>' +
+      '<div class="meta">' + i.time + ' min<br>' + i.cost + '</div></div>'
+    ).join("");
+    $("altCard").hidden = false;
+  }
+
+  function stopSim(){ if (sim && sim.timer){ clearInterval(sim.timer); sim.timer = null; } }
+
+  function resetSim(){
+    stopSim(); sim = null;
+    $("live").hidden = true; $("altCard").hidden = true;
+    $("log").innerHTML = '<li class="empty">Nothing yet. Tap “Check bus” to start.</li>';
+    setResult("Waiting for bus information...");
+  }
+</script>
+</body>
+</html>
